@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!--configuration-->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!--tab title and favicon-->
+    <title>Infra-monitor</title>
+    <link rel="icon" type="image/x-icon" href="https://images.emojiterra.com/google/android-10/512px/1f3d7.png">
+
+    <!--link bootstrap-->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
+
+    <!--open mapbox css and js-->
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet">
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v2.9.2/mapbox-gl.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v2.9.2/mapbox-gl.css' rel='stylesheet' />
+    <style>
+      /*special css for container for map*/
+      #root {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      /*more special css for container for map*/
+      .container {
+        display: flex;
+        height: 100%;
+        width: 85vw;
+        flex-direction: column;
+      }
+
+      /*special css for the map*/
+      #map {
+        width: 100%;
+        height: 100vw;
+        margin-left: 0;
+        margin-right: 0;
+        box-shadow: 0 2px 4px 0 rgb(0 0 0 / 50%);
+      }
+
+      /*marker class for marker divs on map*/
+      .marker {
+        background-image: url('/static/repair.png');
+        background-size: cover;
+        width: 50px;
+        height: 50px;
+        border-radius: 7%;
+        cursor: pointer;
+      }
+
+      /*makes sure popup divs aren't too big*/
+      .mapboxgl-popup {
+        max-width: 200px;
+      }
+
+      /*makes sure the text within a popup is centered*/
+      .mapboxgl-popup-content {
+        text-align: center;
+        font-family: 'Open Sans', sans-serif;
+      }
+    </style>
+
+    <!--my own css and js-->
+    <style>
+      /*gives border for yellow accordion*/
+      .options-container {
+        border-color: black;
+        border-image: linear-gradient(45deg, yellow, black 25%, yellow 50%, black 75%, yellow 100%);
+        border-image-slice: 1;
+        border-radius: 8px;
+        border-width: medium;
+        border-style: solid;
+      }
+
+      /*when applied, gives text a caution tape theme*/
+      .caution-text {
+        background-color: black !important;
+        color: #ffc107 !important;
+      }
+    </style>
+    <script>
+      //when an option on the report box is clicked, this js changes the disabled input's value
+      function select(value)
+      {
+        const input = document.getElementById("damageTypeShown");
+        const hiddenInput = document.getElementById("damageType");
+        input.value = value;
+        hiddenInput.value = value;
+      }
+
+      //when the user get's their own location via the button this function uses geolocation api
+      function currentLocation()
+      {
+        if (navigator.geolocation)
+        {
+          navigator.geolocation.getCurrentPosition(selectLocation);
+        }
+        else
+        {
+          alert("could not get your location");
+        }
+      }
+
+      //takes in position, then formats it, puts it as the input's value
+      function selectLocation(position)
+      {
+        const input = document.getElementById("location");
+        var latitude = String(position.coords.latitude).split(".");
+        var longitude = String(position.coords.longitude).split(".");
+
+        //get decimal part
+        var latitudeDec = latitude[1].slice(0, 6);
+        var longitudeDec = longitude[1].slice(0, 6);
+
+        if (latitudeDec.length < 6)
+        {
+          latitudeDec = latitudeDec + "0".repeat(6 - latitudeDec.length);
+        }
+        if (longitudeDec.length < 6)
+        {
+          longitudeDec = longitudeDec + "0".repeat(6 - longitudeDec.length);
+        }
+
+        latitude = latitude[0] + "." + latitudeDec;
+        longitude = longitude[0] + "." + longitudeDec;
+
+        //add some extra 0s
+        input.value = latitude + " " + longitude;
+      }
+    </script>
+  </head>
+  <!--body-->
+  <body>
+    <!--navbar-->
+    <nav class="navbar navbar-expand-lg" style="background-color: black;">
+      <div class="container-fluid">
+        <!--logo and title-->
+        <a class="navbar-brand" style="color: #ffc107 !important;"href="#">🏗️ Infra-monitor</a>
+        <!--button for navbar on small screens-->
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon" style="background-color: #ffc107 !important;"></span>
+        </button>
+        <!--link to about page-->
+        <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
+          <div class="navbar-nav">
+            <a class="nav-link" href="/about" style="color: #ffc107 !important;">About</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+    <!--warning-->
+    <div class="alert alert-danger text-center">
+       This service is not meant to report emergencies, if the situation is dangerous like a bridge collapse, call 911.
+    </div>
+
+    <!--Box for adding a post-->
+    <div class="options-container accordion p-3 mb-5" id="reportBox">
+      <!--Main Header-->
+      <h1 class="text-center caution-text"><b>Report Infrastructure</b></h1>
+      <div class="accordion-item">
+        <!--Options Header-->
+        <h2 class="accordion-header" id="accordion-header">
+          <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#options">
+            Manual Report
+          </button>
+        </h2>
+
+        <!--options body-->
+        <div id="options" class="accordion-collapse collapse show" data-bs-parent="reportBox">
+          <div class="accordion-body">
+            <!--Regular Maintenance and repaire-->
+            <h3>
+              Regular Maintenance/Repair
+            </h3>
+            <p>For voice report: Say the option you wish to select as it is written on the menu. Then, say "submit" to submit the form.</p>
+
+            <!--report a pothole-->
+            <div class="input-group mb-3" onclick="select('Pothole');">
+              <span class="input-group-text">🕳</span>
+              <input type="text" class="form-control caution-text" value="Pothole" disabled>
+            </div>
+            <!--report a sidewalk damage-->
+            <div class="input-group mb-3" onclick="select('Sidewalk Damage');">
+              <span class="input-group-text">🚶</span>
+              <input type="text" class="form-control caution-text" value="Sidewalk Damage" disabled>
+            </div>
+            <!--report a traffic light-->
+            <div class="input-group mb-3" onclick="select('Faulty Traffic Light');">
+              <span class="input-group-text">🚦</span>
+              <input type="text" class="form-control caution-text" value="Traffic Light Problem" disabled>
+            </div>
+            <!--report vandalised infrastructure-->
+            <div class="input-group mb-3" onclick="select('Damaged/Vandalised Sign(s)');">
+              <span class="input-group-text">🛑</span>
+              <input type="text" class="form-control caution-text" value="Sign Damage" disabled>
+            </div>
+            <!--report Faulty Streetlight-->
+            <div class="input-group mb-3" onclick="select('Streetlight Failure');">
+              <span class="input-group-text">✨️</span>
+              <input type="text" class="form-control caution-text" value="Streetlight Failure" disabled>
+            </div>
+
+            <!--Weather & Natural Damage Section-->
+            <h3>
+              Weather/Natural Damage
+            </h3>
+
+            <!--Street Drainage Problem-->
+            <div class="input-group mb-3" onclick="select('Street Drainage Problem');">
+              <span class="input-group-text ">☔</span>
+              <input type="text" class="form-control caution-text" value="Drainage Problems" disabled>
+            </div>
+            <!--Fallen trees-->
+            <div class="input-group mb-3" onclick="select('Fallen Trees/Branches');">
+              <span class="input-group-text">🌲</span>
+              <input type="text" class="form-control caution-text" value="Foliage Obstruction" disabled>
+            </div>
+
+            <!--form for collecting report data-->
+            <h1 class="text-center" style="color: #33ccff;">
+              <b>Submit Report</b>
+            </h1>
+
+            <form action="/report" method="get" id="reportForm">
+              <!--type of damage-->
+              <label for="category" class="form-label">Damage Type</label>
+              <input type="text" class="form-control" id="damageTypeShown" disabled required>
+              <input type="hidden" name="damageType" id="damageType">
+              <br>
+
+              <!--location-->
+              <label for="location" class="form-label">Location (6 decimal accuracy or more)</label>
+              <button class="btn btn-primary mb-3" onclick="currentLocation();" type="button">
+                Get current location
+              </button>
+              <input type="text" id="location" name="location" class="form-control" required placeholder="Format: longitude latitude (no comma, just a space)">
+              <br>
+
+              <!--submit-->
+              <button type="submit" class="btn btn-success">
+                Submit Report
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!--Button To Voice Report Infrastructure Damage-->
+      <button class="mt-3 btn btn-dark caution-text" id="recordButton" onclick="toggle();"><b>Voice Report</b></button>
+      <br>
+
+      <!--Button To Voice Report Infrastructure Damage-->
+      <button class="mt-3 btn btn-dark"><b><a id="cityLink" class="caution-text">Locate City Services</a></b></button>
+    </div>
+
+
+    <!--map-->
+    <h1 class="text-center caution-text" style="width: 75%; margin: auto; ">Map of Infrastructure</h1>
+
+    <div id="root">
+      <div class="container">
+        <div id='map'></div>
+      </div>
+    </div>
+
+    <!--script to make that handles the map-->
+    <script>
+      //my public token
+      mapboxgl.accessToken = 'pk.eyJ1IjoiYnVtYmxlLWJlZS01MjUiLCJhIjoiY2xieWtwOXA5MXh5NzNvbmlzcHNsbzZtdSJ9.NA_9RnXWbEpq0I4QFOcDhQ';
+      //declare map as a global
+      var map;
+
+      /*
+      there are 3 functions.
+      map location takes the user's location and creates the map centered on the user. This is called only once to initialize some stuff.
+
+      askForMarkers is called by mapLocation and whenever the map is changed by user, it asks the server for all markers within map bounds and
+      passes the response to addMarkers
+
+      addMarkers takes the data, and actually adds the markers to the map
+      */
+
+      function confirm(damagetype, latitude, longitude, status)
+      {
+        const xhr = new XMLHttpRequest();
+
+        xhr.open("GET", "/confirm?damagetype=" + damagetype + "&latitude=" + latitude + "&longitude=" + longitude + "&status=" + status);
+        xhr.send();
+
+        xhr.onload = function(){
+          if (xhr.status === 200)
+          {
+            console.log("confirm request is successful");
+          }
+          else
+          {
+            console.log("confirm request did not work probably");
+          }
+        }
+      }
+
+      function addMarkers(geoJSON)
+      {
+        icons = {
+          "Pothole": "🕳",
+          "Sidewalk Damage": "🚶",
+          "Faulty Traffic Light": "🚦",
+          "Damaged/Vandalised Signs": "🛑",
+          "Streetlight Failure": "✨️",
+          "Street Drainage Problem": "☔",
+          "Fallen Trees/Branches": "🌲"
+        }
+        console.log(geoJSON);
+        //note: this format is not actually geojson format
+        //remove old markers before adding new ones
+        const oldMarkers = document.querySelectorAll(".marker");
+        for (const marker of oldMarkers)
+        {
+          marker.remove();
+        }
+
+        // add markers to map
+        for (const point of geoJSON)
+        {
+          // create a HTML element for each point
+          const el = document.createElement('div');
+          el.className = 'marker';
+
+          //get icon and validity
+          const icon = icons[point.damagetype];
+          var points = Number(point.validity_points);
+          var margin = (points * 7) - 3;
+          var description;
+          if (points < 5)
+          {
+            description = "not well confirmed";
+          }
+          else if (points > 10)
+          {
+            description = "somewhat confirmed";
+          }
+          else
+          {
+            description = "well confirmed";
+          }
+
+          console.log("addMarkers called, json loaded and extracted");
+
+          // take the above plain div and turn it into a marker
+          new mapboxgl.Marker(el)
+          .setLngLat([point.longitude, point.latitude])
+          .setPopup(
+          new mapboxgl.Popup({ offset: 25 })
+          .setHTML(
+          `<h5 class="mb-1">
+             <b>${icon} ${point.damagetype}</b>
+           </h5>
+           <div style="width: 100%; height: 1em; background-image: linear-gradient(to right, red , yellow, green);"></div>
+           <div style="width: 6%; height: 1em; margin-left: ${String(margin)}%" class="mb-1">▲</div>
+           <h6>${description} (${points})</h6>
+           <button class="mb-1" onclick="confirm('${point.damagetype}', '${point.latitude}', '${point.longitude}', 'True')">Confirm damage</button>
+           <button onclick="confirm('${point.damagetype}', '${point.latitude}', '${point.longitude}', 'False')">Can't confirm damage</button>`)
+          )
+          .addTo(map);
+
+          console.log("markers supposedly added to map");
+        }
+      }
+
+
+      function askForMarkers()
+      {
+        //create XMLHttpRequest object
+        const xhr = new XMLHttpRequest();
+
+        //find out bounds of map
+        const bounds = map.getBounds();
+        const ne = bounds._ne;
+        const sw = bounds._sw;
+
+        //open a get request with the server with the bounds of map
+        xhr.open("GET", "/getMarkers?" + "neLat=" + String(ne.lat) + "&neLng=" + String(ne.lng) + "&swLat=" + String(sw.lat) + "&swLng=" + String(sw.lng));
+
+        //send the Http request
+        xhr.send();
+
+        //triggered when the response is completed
+        xhr.onload = function() {
+          //if the response is ok
+          if (xhr.status === 200)
+          {
+            //take response into a JSON object and give to function that adds markers to map
+            data = JSON.parse(xhr.responseText);
+            addMarkers(data.locations);
+          }
+          //if response is 500 error, log it
+          else if (xhr.status === 500)
+          {
+            alert("the server was very very very confused by something, status code 500, this is quite bad")
+          }
+          //if something else bad happens, log it
+          else
+          {
+            alert("something weird happened, idek what to do");
+          }
+        }
+
+        //triggered when a network-level error occurs with the request
+        xhr.onerror = function() {
+          console.log("Network error occurred")
+        }
+      }
+
+      //function to create the map zoomed on user location onload one time
+      function mapLocation(position)
+      {
+        longitude = position.coords.longitude;
+        latitude = position.coords.latitude;
+
+        //create map
+        map = new mapboxgl.Map
+        ({
+          container: 'map',
+          style: 'mapbox://styles/mapbox/light-v11',
+          center: [longitude, latitude],
+          zoom: 10
+        });
+
+        //configure map so it asks for markers whenever the map is dragged or zoomed out
+        map.on('moveend', () => {
+          console.log('A moveend event occurred.');
+          askForMarkers();
+        });
+
+        //then ask for markers
+        askForMarkers();
+      }
+
+      //if geolocation api is supported, call above function to create map
+      if (navigator.geolocation)
+      {
+        navigator.geolocation.getCurrentPosition(mapLocation);
+      }
+      else
+      {
+        alert("could not get your location");
+      }
+    </script>
+
+    <!--Script for voice reporting-->
+    <script>
+      //useful tool
+      function removePunctuation(text)
+      {
+        var newText = text.replace(/[\.,?!]/g, "");
+        return newText;
+      }
+
+      keyword_to_english={
+        'pothole': 'Pothole',
+        'sidewalk': 'Sidewalk Damage',
+        'traffic': 'Faulty Traffic Light',
+        'sign': 'Damaged/Vandalised Sign(s)',
+        'street': 'Streetlight Failure',
+        'drainage': 'Street Drainage Problem',
+        'foliage': 'Fallen Trees/Branches'
+      };
+
+
+      //declare stuff
+      var recordButton = document.getElementById('recordButton');
+      const SpeechRecognition = new webkitSpeechRecognition() || new SpeechRecognition();
+      SpeechRecognition.lang = 'en-US';
+      var transcript;
+      var buttonstate = false;
+      var index;
+      var damagetype;
+
+      //configurations
+      SpeechRecognition.onstart = () => {
+        console.log('it started doing the thing');
+      };
+
+      SpeechRecognition.onerror = () => {
+        console.error('it did not do the thing');
+      };
+
+      SpeechRecognition.onresult = (e) => {
+        transcript = e.results[0][0].transcript;
+        console.log('You said: ', transcript);
+
+        //process string
+        transcript = transcript.toLowerCase();
+        transcript = removePunctuation(transcript);
+
+        //process array
+        transcript = transcript.split(" ");
+        if (transcript[0] === 'submit')
+        {
+          //submit form if user says so
+          document.getElementById('reportForm').submit();
+        }
+        else
+        {
+          index = transcript.indexOf('record');
+
+          //fill out form
+          damagetype = transcript[index + 1];
+          damagetype = keyword_to_english[damagetype];
+          console.log(damagetype);
+          if (damagetype !== undefined)
+          {
+            select(damagetype);
+            currentLocation();
+          }
+        }
+
+      };
+
+      SpeechRecognition.onend = () => {
+        if (buttonstate)
+        {
+          SpeechRecognition.start();
+        }
+      }
+
+      function toggle()
+      {
+          buttonstate = !buttonstate;
+          if (buttonstate)
+          {
+            recordButton.classList.remove('btn-dark');
+            recordButton.classList.remove('caution-text');
+            recordButton.classList.add('btn-secondary');
+            SpeechRecognition.start();
+          }
+          else
+          {
+            recordButton.classList.remove('btn-secondary');
+            recordButton.classList.add('btn-dark');
+            recordButton.classList.add('caution-text');
+          }
+      }
+    </script>
+
+    <!--Gets user city for manual reporting to city-->
+    <script>
+      const apiKey = '4b1c39fb40cfbc';
+      const linkElement = document.getElementById("cityLink");
+      async function getUserCity()
+      {
+        const response = await fetch(`https://ipinfo.io/?token=${apiKey}`);
+        const data = await response.json();
+
+        const city = data.city;
+        const state = data.region;
+        console.log(typeof city);
+
+        var searchQuery = "report an infrastructure problem " + city + ", " + state;
+        var googleUrl = 'https://www.google.com/search?q=' + encodeURIComponent(searchQuery);
+        linkElement.setAttribute('href', googleUrl);
+        console.log(googleUrl);
+      }
+
+      getUserCity();
+
+    </script>
+  </body>
+</html>
